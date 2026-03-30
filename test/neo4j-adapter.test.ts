@@ -6,7 +6,7 @@ import neo4j from "neo4j-driver";
 import { neo4jAdapter, runCypherMigration } from "../src/index.js";
 
 const started = await new Neo4jContainer("neo4j:5.26-community")
-	.withStartupTimeout(120_000)
+	.withStartupTimeout(120000)
 	.start();
 
 const driver = neo4j.driver(
