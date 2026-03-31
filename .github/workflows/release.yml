@@ -1,24 +1,24 @@
-name: JS packages publish
+name: Release
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: js-packages-publish-${{ github.repository }}
+  group: release-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
   id-token: write
 
 jobs:
   quality:
     uses: ./.github/workflows/quality-reusable.yml
 
-  publish:
+  release:
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -40,10 +40,17 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
+      - name: Build
         run: pnpm run build
 
-      - name: Publish packages
-        run: pnpm changeset publish
+      - name: Create release PR or publish
+        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
+        with:
+          version: pnpm changeset version
+          publish: pnpm changeset publish
+          commit: "chore: version packages"
+          title: "chore: version packages"
+          github-token: ${{ secrets.CHANGESET_RELEASE_PAT || github.token }}
         env:
+          GITHUB_TOKEN: ${{ secrets.CHANGESET_RELEASE_PAT || github.token }}
           NPM_CONFIG_PROVENANCE: "true"

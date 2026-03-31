@@ -1,31 +1,17 @@
-name: JS packages publish
+name: Quality Reusable
 
 on:
-  workflow_dispatch:
-  push:
-    tags:
-      - "v*"
-
-concurrency:
-  group: js-packages-publish-${{ github.repository }}
-  cancel-in-progress: false
+  workflow_call:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   quality:
-    uses: ./.github/workflows/quality-reusable.yml
-
-  publish:
-    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
@@ -40,10 +26,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
+      - name: Build
         run: pnpm run build
 
-      - name: Publish packages
-        run: pnpm changeset publish
-        env:
-          NPM_CONFIG_PROVENANCE: "true"
+      - name: Test
+        run: pnpm test

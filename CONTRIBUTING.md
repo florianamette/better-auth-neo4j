@@ -14,7 +14,10 @@ Tests spin up Neo4j via **Testcontainers** (Docker required), similar to GitHub 
 
 Workflows live under `.github/workflows/`:
 
-- **`ci.yml`** — on push and pull requests to `main` and `dev`: `pnpm install --frozen-lockfile`, `pnpm run build`, `pnpm test` (Node 24, `ubuntu-latest`).
+- **`quality-reusable.yml`** — reusable quality gate: install, build, test (Node 22, pnpm 9.15.9).
+- **`ci.yml`** — on push and pull requests to `main` and `dev`: runs `quality-reusable.yml`.
+- **`publish.yml`** — on tags `v*` (or manual): runs quality, then publishes package(s) with provenance.
+- **`release.yml`** — on `main` (or manual): runs quality, then `changesets/action` to create/update release PRs and publish.
 
 ## Releases (maintainers)
 
@@ -34,7 +37,7 @@ Releases are managed with Changesets.
    ```
 
 2. Merge into `main`.
-3. The **Release Main** workflow (`publish.yml`) opens/updates a versioning PR.
+3. The **Release** workflow (`release.yml`) opens/updates a versioning PR.
 4. Merge the versioning PR to publish to npm and create a GitHub Release.
 
 The workflow:
@@ -42,16 +45,6 @@ The workflow:
 - bumps `package.json` version from pending changesets
 - publishes to npm with `latest` tag and provenance
 - creates a GitHub release automatically
-
-### Prereleases from `dev`
-
-Pushes to `dev` trigger **Publish Dev** (`publish-dev.yml`):
-
-- generates a snapshot version (`*-dev.*`)
-- publishes to npm with `dev` dist-tag and provenance
-- creates a GitHub prerelease
-
-This is intended for testing integration builds before stable release on `main`.
 
 ### Manual publish from your machine
 
