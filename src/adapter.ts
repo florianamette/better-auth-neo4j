@@ -1,11 +1,13 @@
-import { createAdapterFactory } from "better-auth/adapters";
+import {
+	createAdapterFactory,
+	type AdapterFactoryOptions,
+	type CleanedWhere,
+	type CustomAdapter,
+	type JoinConfig,
+} from "better-auth/adapters";
 import type {
-	AdapterFactoryOptions,
-	CleanedWhere,
-	CustomAdapter,
-	JoinConfig,
-} from "@better-auth/core/db/adapter";
-import type { BetterAuthOptions } from "better-auth/types";
+	BetterAuthOptions,
+} from "better-auth/types";
 import type { DBFieldAttribute } from "better-auth/db";
 import Cypher from "@neo4j/cypher-builder";
 import type { ManagedTransaction, Session } from "neo4j-driver";

@@ -1,4 +1,4 @@
-import type { CleanedWhere } from "@better-auth/core/db/adapter";
+import type { CleanedWhere } from "better-auth/adapters";
 import Cypher, { in as opIn } from "@neo4j/cypher-builder";
 import type { Predicate } from "@neo4j/cypher-builder";
 

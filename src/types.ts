@@ -1,4 +1,4 @@
-import type { DBAdapterDebugLogOption } from "@better-auth/core/db/adapter";
+import type { DBAdapterDebugLogOption } from "better-auth/adapters";
 import type { Driver, Session } from "neo4j-driver";
 
 export interface Neo4jBetterAuthConfig {
