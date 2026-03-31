@@ -2,9 +2,6 @@ name: JS packages publish
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 concurrency:
   group: js-packages-publish-${{ github.repository }}

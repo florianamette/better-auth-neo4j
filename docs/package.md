@@ -174,6 +174,7 @@ This section describes operational behavior implemented by the adapter.
   - `select`
 - returns array of mapped plain objects
 - excludes fields marked `returned: false`
+- rejects unknown `sortBy.field` values with `neo4jAdapter: invalid sort field "<field>"`
 
 ### `count`
 
@@ -199,6 +200,11 @@ Behavior:
 ## Filtering and where operators
 
 `where` clauses are converted to Cypher predicates through `buildWherePredicate(...)`.
+
+Field validation:
+
+- `where.field` must match a DB field declared in the Better Auth schema for the queried model
+- unknown fields are rejected with `neo4jAdapter: invalid where field "<field>"`
 
 Supported operators:
 
@@ -383,6 +389,8 @@ If your release process depends on tags or version matching, keep workflow trigg
   - prefer `driver` mode for per-operation short-lived sessions
 - query mismatch due to model/field naming
   - ensure Better Auth naming resolvers are used consistently in migrations and runtime
+- invalid `where` / `sortBy` field
+  - adapter now validates fields against schema-derived DB field names and rejects unknown fields
 
 ### Current limitations / behavior notes
 

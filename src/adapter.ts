@@ -23,6 +23,11 @@ import type { Neo4jBetterAuthConfig } from "./types.js";
 
 type BetterAuthFactory = ReturnType<typeof createAdapterFactory<BetterAuthOptions>>;
 type TxAdapter = Awaited<ReturnType<BetterAuthFactory>>;
+type QueryResult = Awaited<ReturnType<ManagedTransaction["run"]>>;
+type RunCypherFn = (
+	cypher: string,
+	params?: Record<string, unknown>,
+) => Promise<QueryResult>;
 
 export function neo4jAdapter(
 	input: Neo4jBetterAuthConfig,
@@ -54,27 +59,74 @@ export function neo4jAdapter(
 			getDefaultModelName,
 			getFieldName,
 		}: Parameters<AdapterFactoryOptions["adapter"]>[0]): CustomAdapter => {
+			const withOperationError = <T>(op: string, promise: Promise<T>) =>
+				promise.catch((cause: unknown) => {
+					throw new Error(`neo4jAdapter: ${op} failed`, { cause });
+				});
+
 			const runWrite = async (
 				cypher: string,
 				params?: Record<string, unknown>,
 			) => {
-				if (tx) return tx.run(cypher, params);
-				return withSession((s) =>
-					s.executeWrite((t) => t.run(cypher, params)),
-				);
+				try {
+					if (tx) return tx.run(cypher, params);
+					return withSession((s) =>
+						s.executeWrite((t) => t.run(cypher, params)),
+					);
+				} catch {
+					throw new Error("neo4jAdapter: write query failed");
+				}
 			};
 
 			const runRead = async (
 				cypher: string,
 				params?: Record<string, unknown>,
 			) => {
-				if (tx) return tx.run(cypher, params);
+				try {
+					if (tx) return tx.run(cypher, params);
+					return withSession((s) =>
+						s.executeRead((t) => t.run(cypher, params)),
+					);
+				} catch {
+					throw new Error("neo4jAdapter: read query failed");
+				}
+			};
+
+			const withWriteTransaction = async <T>(
+				runFn: (run: RunCypherFn) => Promise<T>,
+			): Promise<T> => {
+				if (tx) {
+					return runFn((cypher, params) => tx.run(cypher, params));
+				}
 				return withSession((s) =>
-					s.executeRead((t) => t.run(cypher, params)),
+					s.executeWrite((t) =>
+						runFn((cypher, params) => t.run(cypher, params)),
+					),
 				);
 			};
 
 			const lbl = (m: string) => escapeIdentifier(m);
+			const allowedDbFieldsForModel = (model: string): Set<string> => {
+				const defaultModel = getDefaultModelName(model);
+				const table = schema[defaultModel];
+				const out = new Set<string>();
+				if (!table?.fields) return out;
+				for (const field of Object.keys(table.fields)) {
+					out.add(getFieldName({ model: defaultModel, field }));
+				}
+				return out;
+			};
+
+			const assertSortableField = (
+				model: string,
+				sortBy?: { field: string; direction: "asc" | "desc" },
+			): void => {
+				if (!sortBy) return;
+				const fields = allowedDbFieldsForModel(model);
+				if (!fields.has(sortBy.field)) {
+					throw new Error(`neo4jAdapter: invalid sort field "${sortBy.field}"`);
+				}
+			};
 
 			/**
 			 * `select` uses schema field names; rows use DB keys (`fieldName` / getFieldName).
@@ -152,7 +204,11 @@ export function neo4jAdapter(
 			} {
 				const n = new Cypher.NamedNode("n");
 				const pattern = new Cypher.Pattern(n, { labels: [model] });
-				const { predicate, params: wp } = buildWherePredicate(n, where);
+				const { predicate, params: wp } = buildWherePredicate(
+					n,
+					where,
+					allowedDbFieldsForModel(model),
+				);
 				const mq = predicate
 					? new Cypher.Match(pattern).where(predicate)
 					: new Cypher.Match(pattern);
@@ -161,6 +217,7 @@ export function neo4jAdapter(
 			}
 
 			async function collectIds(
+				run: RunCypherFn,
 				model: string,
 				where: CleanedWhere[] | undefined,
 			): Promise<unknown[]> {
@@ -168,14 +225,18 @@ export function neo4jAdapter(
 				const idDb = getFieldName({ model: dk, field: "id" });
 				const n = new Cypher.NamedNode("n");
 				const pattern = new Cypher.Pattern(n, { labels: [model] });
-				const { predicate, params: wp } = buildWherePredicate(n, where);
+				const { predicate, params: wp } = buildWherePredicate(
+					n,
+					where,
+					allowedDbFieldsForModel(model),
+				);
 				const mq = (
 					predicate
 						? new Cypher.Match(pattern).where(predicate)
 						: new Cypher.Match(pattern)
 				).return([n.property(idDb), "id"]);
 				const built = mq.build();
-				const res = await runRead(built.cypher, {
+				const res = await run(built.cypher, {
 					...built.params,
 					...wp,
 				});
@@ -183,10 +244,11 @@ export function neo4jAdapter(
 			}
 
 			async function cascadeDeleteChildrenForUsers(
+				run: RunCypherFn,
 				userLabel: string,
 				where: CleanedWhere[] | undefined,
 			): Promise<void> {
-				const ids = await collectIds(userLabel, where);
+				const ids = await collectIds(run, userLabel, where);
 				if (ids.length === 0) return;
 				const targets = listCascadeChildTargets(
 					schema,
@@ -196,7 +258,7 @@ export function neo4jAdapter(
 					getFieldName,
 				);
 				for (const { childLabel, fkProp } of targets) {
-					await runWrite(
+					await run(
 						`MATCH (n:${lbl(childLabel)}) WHERE n.${lbl(fkProp)} IN $ids DETACH DELETE n`,
 						{ ids },
 					);
@@ -204,12 +266,13 @@ export function neo4jAdapter(
 			}
 
 			async function deleteIncomingHasEdges(
+				run: RunCypherFn,
 				model: string,
 				where: CleanedWhere[] | undefined,
 			): Promise<void> {
 				const relType = edgeTypeForChildLabel(model);
 				const { cypher, params } = matchPrefix(model, where);
-				await runWrite(
+				await run(
 					`${cypher}\nOPTIONAL MATCH (p)-[r:${relType}]->(n)\nDELETE r`,
 					params,
 				);
@@ -222,7 +285,11 @@ export function neo4jAdapter(
 			): Promise<Record<string, unknown> | null> {
 				const n = new Cypher.NamedNode("n");
 				const pattern = new Cypher.Pattern(n, { labels: [model] });
-				const { predicate, params: wp } = buildWherePredicate(n, where);
+				const { predicate, params: wp } = buildWherePredicate(
+					n,
+					where,
+					allowedDbFieldsForModel(model),
+				);
 				const mq = (
 					predicate
 						? new Cypher.Match(pattern).where(predicate)
@@ -253,7 +320,11 @@ export function neo4jAdapter(
 			): Promise<number> {
 				const n = new Cypher.NamedNode("n");
 				const pattern = new Cypher.Pattern(n, { labels: [model] });
-				const { predicate, params: wp } = buildWherePredicate(n, where);
+				const { predicate, params: wp } = buildWherePredicate(
+					n,
+					where,
+					allowedDbFieldsForModel(model),
+				);
 				const mq = (
 					predicate
 						? new Cypher.Match(pattern).where(predicate)
@@ -276,45 +347,47 @@ export function neo4jAdapter(
 					model: string;
 					data: T;
 				}) => {
-					const dk = getDefaultModelName(model);
-					const props = propsForNeo4j(data as Record<string, unknown>);
-					const { cypher: createCy, params: createParams } = createNodeQuery(
-						model,
-						props,
+					return withOperationError(
+						"create",
+						withWriteTransaction(async (run) => {
+							const dk = getDefaultModelName(model);
+							const props = propsForNeo4j(data as Record<string, unknown>);
+							const { cypher: createCy, params: createParams } = createNodeQuery(
+								model,
+								props,
+							);
+							const res = await run(createCy, createParams);
+							const rec = res.records[0]?.get("n");
+							if (!rec || typeof rec !== "object" || !("properties" in rec)) {
+								throw new Error("neo4jAdapter: CREATE returned no node");
+							}
+							const row = nodeToPlain(rec as import("neo4j-driver").Node);
+							for (const [k, v] of Object.entries(data)) {
+								if (!(k in row) && (v === null || v === undefined)) {
+									(row as Record<string, unknown>)[k] = null;
+								}
+							}
+							normalizeRow(dk, row);
+							const idKey = getFieldName({ model: dk, field: "id" });
+							const childId = row[idKey];
+							if (typeof childId === "string" || typeof childId === "number") {
+								await mergeReferenceEdges(
+									schema,
+									getDefaultModelName,
+									getModelName,
+									getFieldName,
+									dk,
+									model,
+									String(childId),
+									row,
+									async (c, p) => {
+										await run(c, p);
+									},
+								);
+							}
+							return row as T;
+						}),
 					);
-					const res = await runWrite(createCy, createParams);
-					const rec = res.records[0]?.get("n");
-					if (!rec || typeof rec !== "object" || !("properties" in rec)) {
-						throw new Error("neo4jAdapter: CREATE returned no node");
-					}
-					const row = nodeToPlain(rec as import("neo4j-driver").Node);
-					for (const [k, v] of Object.entries(data)) {
-						if (
-							!(k in row) &&
-							(v === null || v === undefined)
-						) {
-							(row as Record<string, unknown>)[k] = null;
-						}
-					}
-					normalizeRow(dk, row);
-					const idKey = getFieldName({ model: dk, field: "id" });
-					const childId = row[idKey];
-					if (typeof childId === "string" || typeof childId === "number") {
-						await mergeReferenceEdges(
-							schema,
-							getDefaultModelName,
-							getModelName,
-							getFieldName,
-							dk,
-							model,
-							String(childId),
-							row,
-							async (c, p) => {
-								await runWrite(c, p);
-							},
-						);
-					}
-					return row as T;
 				},
 
 				update: async <T>({
@@ -326,49 +399,54 @@ export function neo4jAdapter(
 					where: CleanedWhere[];
 					update: T;
 				}) => {
-					const dk = getDefaultModelName(model);
-					const patch = propsForNeo4j(
-						update as unknown as Record<string, unknown>,
-					);
-					if (Object.keys(patch).length === 0) {
-						return (await findOneRow(model, where, undefined)) as T | null;
-					}
+					return withOperationError(
+						"update",
+						withWriteTransaction(async (run) => {
+							const dk = getDefaultModelName(model);
+							const patch = propsForNeo4j(
+								update as unknown as Record<string, unknown>,
+							);
+							if (Object.keys(patch).length === 0) {
+								return (await findOneRow(model, where, undefined)) as T | null;
+							}
 
-					const { cypher: mc, params: mp } = matchPrefix(model, where);
-					const patchParams: Record<string, unknown> = {};
-					for (const [k, v] of Object.entries(patch)) {
-						patchParams[k] = asNeo4jParameterValue(v);
-					}
-					const res = await runWrite(
-						`${mc} SET n += $patch RETURN n LIMIT 1`,
-						{ ...mp, patch: patchParams },
+							const { cypher: mc, params: mp } = matchPrefix(model, where);
+							const patchParams: Record<string, unknown> = {};
+							for (const [k, v] of Object.entries(patch)) {
+								patchParams[k] = asNeo4jParameterValue(v);
+							}
+							const res = await run(`${mc} SET n += $patch RETURN n LIMIT 1`, {
+								...mp,
+								patch: patchParams,
+							});
+							const node = res.records[0]?.get("n");
+							if (!node || typeof node !== "object" || !("properties" in node)) {
+								return null;
+							}
+							const row = normalizeRow(
+								dk,
+								nodeToPlain(node as import("neo4j-driver").Node),
+							);
+							const idField = getFieldName({ model: dk, field: "id" });
+							const childId = row[idField];
+							if (childId !== undefined && childId !== null) {
+								await updateReferenceEdges(
+									schema,
+									getDefaultModelName,
+									getModelName,
+									getFieldName,
+									dk,
+									model,
+									String(childId),
+									patch,
+									async (c, p) => {
+										await run(c, p);
+									},
+								);
+							}
+							return row as T;
+						}),
 					);
-					const node = res.records[0]?.get("n");
-					if (!node || typeof node !== "object" || !("properties" in node)) {
-						return null;
-					}
-					const row = normalizeRow(
-						dk,
-						nodeToPlain(node as import("neo4j-driver").Node),
-					);
-					const idField = getFieldName({ model: dk, field: "id" });
-					const childId = row[idField];
-					if (childId !== undefined && childId !== null) {
-						await updateReferenceEdges(
-							schema,
-							getDefaultModelName,
-							getModelName,
-							getFieldName,
-							dk,
-							model,
-							String(childId),
-							patch,
-							async (c, p) => {
-								await runWrite(c, p);
-							},
-						);
-					}
-					return row as T;
 				},
 
 				updateMany: async ({
@@ -380,21 +458,26 @@ export function neo4jAdapter(
 					where: CleanedWhere[];
 					update: Record<string, unknown>;
 				}) => {
-					const patch = propsForNeo4j(update);
-					if (Object.keys(patch).length === 0) {
-						return countRows(model, where);
-					}
-					const { cypher: mc, params: mp } = matchPrefix(model, where);
-					const patchParams: Record<string, unknown> = {};
-					for (const [k, v] of Object.entries(patch)) {
-						patchParams[k] = asNeo4jParameterValue(v);
-					}
-					const res = await runWrite(
-						`${mc} SET n += $patch RETURN count(n) AS c`,
-						{ ...mp, patch: patchParams },
+					return withOperationError(
+						"updateMany",
+						(async () => {
+							const patch = propsForNeo4j(update);
+							if (Object.keys(patch).length === 0) {
+								return countRows(model, where);
+							}
+							const { cypher: mc, params: mp } = matchPrefix(model, where);
+							const patchParams: Record<string, unknown> = {};
+							for (const [k, v] of Object.entries(patch)) {
+								patchParams[k] = asNeo4jParameterValue(v);
+							}
+							const res = await runWrite(
+								`${mc} SET n += $patch RETURN count(n) AS c`,
+								{ ...mp, patch: patchParams },
+							);
+							const c = res.records[0]?.get("c");
+							return typeof c === "number" ? c : Number(c ?? 0);
+						})(),
 					);
-					const c = res.records[0]?.get("c");
-					return typeof c === "number" ? c : Number(c ?? 0);
 				},
 
 				delete: async ({
@@ -404,22 +487,31 @@ export function neo4jAdapter(
 					model: string;
 					where: CleanedWhere[];
 				}) => {
-					const dk = getDefaultModelName(model);
-					if (dk === "user") {
-						await cascadeDeleteChildrenForUsers(model, where);
-					} else if (dk === "session" || dk === "account") {
-						await deleteIncomingHasEdges(model, where);
-					}
-					const n = new Cypher.NamedNode("n");
-					const pattern = new Cypher.Pattern(n, { labels: [model] });
-					const { predicate, params: wp } = buildWherePredicate(n, where);
-					const dq = (
-						predicate
-							? new Cypher.Match(pattern).where(predicate)
-							: new Cypher.Match(pattern)
-					).detachDelete(n);
-					const built = dq.build();
-					await runWrite(built.cypher, { ...built.params, ...wp });
+					await withOperationError(
+						"delete",
+						withWriteTransaction(async (run) => {
+							const dk = getDefaultModelName(model);
+							if (dk === "user") {
+								await cascadeDeleteChildrenForUsers(run, model, where);
+							} else if (dk === "session" || dk === "account") {
+								await deleteIncomingHasEdges(run, model, where);
+							}
+							const n = new Cypher.NamedNode("n");
+							const pattern = new Cypher.Pattern(n, { labels: [model] });
+							const { predicate, params: wp } = buildWherePredicate(
+								n,
+								where,
+								allowedDbFieldsForModel(model),
+							);
+							const dq = (
+								predicate
+									? new Cypher.Match(pattern).where(predicate)
+									: new Cypher.Match(pattern)
+							).detachDelete(n);
+							const built = dq.build();
+							await run(built.cypher, { ...built.params, ...wp });
+						}),
+					);
 				},
 
 				deleteMany: async ({
@@ -429,26 +521,35 @@ export function neo4jAdapter(
 					model: string;
 					where: CleanedWhere[];
 				}) => {
-					const dk = getDefaultModelName(model);
-					if (dk === "user") {
-						await cascadeDeleteChildrenForUsers(model, where);
-					} else if (dk === "session" || dk === "account") {
-						await deleteIncomingHasEdges(model, where);
-					}
-					const n = new Cypher.NamedNode("n");
-					const pattern = new Cypher.Pattern(n, { labels: [model] });
-					const { predicate, params: wp } = buildWherePredicate(n, where);
-					const dq = (
-						predicate
-							? new Cypher.Match(pattern).where(predicate)
-							: new Cypher.Match(pattern)
-					).detachDelete(n);
-					const built = dq.build();
-					const res = await runWrite(built.cypher, {
-						...built.params,
-						...wp,
-					});
-					return res.summary.counters.updates().nodesDeleted ?? 0;
+					return withOperationError(
+						"deleteMany",
+						withWriteTransaction(async (run) => {
+							const dk = getDefaultModelName(model);
+							if (dk === "user") {
+								await cascadeDeleteChildrenForUsers(run, model, where);
+							} else if (dk === "session" || dk === "account") {
+								await deleteIncomingHasEdges(run, model, where);
+							}
+							const n = new Cypher.NamedNode("n");
+							const pattern = new Cypher.Pattern(n, { labels: [model] });
+							const { predicate, params: wp } = buildWherePredicate(
+								n,
+								where,
+								allowedDbFieldsForModel(model),
+							);
+							const dq = (
+								predicate
+									? new Cypher.Match(pattern).where(predicate)
+									: new Cypher.Match(pattern)
+							).detachDelete(n);
+							const built = dq.build();
+							const res = await run(built.cypher, {
+								...built.params,
+								...wp,
+							});
+							return res.summary.counters.updates().nodesDeleted ?? 0;
+						}),
+					);
 				},
 
 				findOne: async <T>({
@@ -484,9 +585,14 @@ export function neo4jAdapter(
 					join?: JoinConfig;
 				}) => {
 					void _join;
+					assertSortableField(model, sortBy);
 					const n = new Cypher.NamedNode("n");
 					const pattern = new Cypher.Pattern(n, { labels: [model] });
-					const { predicate, params: wp } = buildWherePredicate(n, where);
+					const { predicate, params: wp } = buildWherePredicate(
+						n,
+						where,
+						allowedDbFieldsForModel(model),
+					);
 					let chain: Cypher.Match = predicate
 						? new Cypher.Match(pattern).where(predicate)
 						: new Cypher.Match(pattern);
@@ -565,13 +671,14 @@ export function neo4jAdapter(
 			transaction: async (cb) => {
 				const run = async (s: Session) =>
 					s.executeWrite(async (tx) => {
+						if (!lazyOptions) {
+							throw new Error("neo4jAdapter: adapter options not initialized");
+						}
 						const innerFactory = createAdapterFactory({
 							config: adapterOptions.config,
 							adapter: createInnerAdapter(tx),
 						});
-						return cb(
-							innerFactory(lazyOptions!) as Parameters<typeof cb>[0],
-						);
+						return cb(innerFactory(lazyOptions) as Parameters<typeof cb>[0]);
 					});
 				if (input.session) return run(input.session);
 				const s = driver!.session({ database });

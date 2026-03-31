@@ -5,8 +5,16 @@ import type { Predicate } from "@neo4j/cypher-builder";
 export function buildWherePredicate(
 	n: Cypher.NamedNode,
 	where: CleanedWhere[] | undefined,
+	allowedFields?: ReadonlySet<string>,
 ): { predicate?: Predicate; params: Record<string, unknown> } {
 	if (!where?.length) return { params: {} };
+	if (allowedFields) {
+		for (const w of where) {
+			if (!allowedFields.has(w.field)) {
+				throw new Error(`neo4jAdapter: invalid where field "${w.field}"`);
+			}
+		}
+	}
 	const params: Record<string, unknown> = {};
 	let i = 0;
 	const param = (val: unknown) => {
