@@ -14,7 +14,7 @@ Tests spin up Neo4j via **Testcontainers** (Docker required), similar to GitHub 
 
 Workflows live under `.github/workflows/`:
 
-- **`quality-reusable.yml`** — reusable quality gate: install, build, test (Node 22, pnpm 9.15.9).
+- **`quality-reusable.yml`** — reusable quality gate: install, build, test (Node 24, pnpm 9.15.9).
 - **`ci.yml`** — on push and pull requests to `main` and `dev`: runs `quality-reusable.yml`.
 - **`publish.yml`** — manual-only fallback publish workflow: runs quality, then publishes package(s) with provenance.
 - **`release.yml`** — on `main` (or manual): runs quality, then `changesets/action` to create/update release PRs and publish.
