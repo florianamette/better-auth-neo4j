@@ -34,6 +34,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/florianamette/better-auth-neo4j.git"
+  },
+  "bugs": {
+    "url": "https://github.com/florianamette/better-auth-neo4j/issues"
+  },
+  "homepage": "https://github.com/florianamette/better-auth-neo4j#readme",
   "peerDependencies": {
     "@neo4j/cypher-builder": "^3.0.1",
     "better-auth": "^1.5.0",

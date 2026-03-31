@@ -31,38 +31,13 @@ export const auth = betterAuth({
 
 Apply uniqueness constraints / indexes generated for your schema (see `buildSchemaStatements` / `runCypherMigration` in the package exports) before going to production.
 
-## Development
+## Example (Next.js + Docker Neo4j)
 
-```bash
-npm ci
-npm run build
-npm test
-```
+See the [`example/`](example/) app: Better Auth, `neo4jAdapter`, Docker Compose for Neo4j, and `npm run db:schema`.
 
-Tests use Docker (Testcontainers Neo4j), as on GitHub Actions.
+## Contributing
 
-## Releases (maintainers)
-
-### Secret
-
-In the GitHub repository: **Settings → Secrets and variables → Actions**, add:
-
-- **`NPM_TOKEN`**: npm [automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with permission to publish `neo4j-better-auth`.
-
-### Publishing a version
-
-1. Bump `version` in `package.json` (or run `npm version patch|minor|major`, which updates `package.json` and creates a git tag).
-2. Ensure the git tag is exactly `v` + semver from `package.json`, for example `v0.2.0` for version `0.2.0`.
-3. Push the commit and the tag, for example:
-
-   ```bash
-   git push origin main
-   git push origin v0.2.0
-   ```
-
-The **Publish** workflow (on tag `v*`) runs tests, builds, publishes to [npmjs](https://www.npmjs.com/), and creates a **GitHub Release** with auto-generated notes.
-
-If the tag does not match `package.json` (e.g. tag `v0.2.0` but version `0.1.0`), the workflow fails before publishing.
+Development setup, tests, CI, and release process: **[CONTRIBUTING.md](https://github.com/florianamette/better-auth-neo4j/blob/main/CONTRIBUTING.md)** in the repository.
 
 ## License
 
