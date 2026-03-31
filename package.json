@@ -18,11 +18,16 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish --provenance",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -49,6 +54,7 @@
   },
   "devDependencies": {
     "@better-auth/test-utils": "^1.5.6",
+    "@changesets/cli": "^2.30.0",
     "@neo4j/cypher-builder": "^3.0.1",
     "@testcontainers/neo4j": "^11.0.0",
     "@types/node": "^25.5.0",
@@ -60,5 +66,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "packageManager": "pnpm@9.15.9"
 }

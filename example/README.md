@@ -45,23 +45,13 @@ Edit `.env.local`:
 - Set `BETTER_AUTH_SECRET` to a long random string (32+ characters).
 - Align URLs with where you run Next (`BETTER_AUTH_URL` and `NEXT_PUBLIC_BETTER_AUTH_URL`, e.g. `http://localhost:3000`).
 
-## 4. Apply Neo4j constraints / indexes
-
-With Neo4j running and `.env.local` filled:
-
-```bash
-npm run db:schema
-```
-
-This uses the same Better Auth schema as [`lib/auth.ts`](lib/auth.ts) via [`runCypherMigration`](https://github.com/florianamette/better-auth-neo4j) from the adapter.
-
-## 5. Run the app
+## 4. Run the app
 
 ```bash
 npm run dev
 ```
 
-Open http://localhost:3000 — sign up with email/password; data is stored as Neo4j nodes and relationship edges as described in the [Better Auth adapter guide](https://better-auth.com/docs/guides/create-a-db-adapter).
+Open http://localhost:5555 — you will be redirected to `/login` when not authenticated.
 
 ## Scripts
 
@@ -69,7 +59,6 @@ Open http://localhost:3000 — sign up with email/password; data is stored as Ne
 | -------------- | -------------------------- |
 | `npm run dev`  | Next.js dev server         |
 | `npm run build`| Production build           |
-| `npm run db:schema` | Apply Neo4j constraints |
 
 ## Troubleshooting
 
@@ -81,4 +70,4 @@ Open http://localhost:3000 — sign up with email/password; data is stored as Ne
 - [`lib/auth.ts`](lib/auth.ts) — `betterAuth` + `neo4jAdapter` + `nextCookies`
 - [`lib/auth-client.ts`](lib/auth-client.ts) — `createAuthClient` for the browser
 - [`app/api/auth/[...all]/route.ts`](app/api/auth/[...all]/route.ts) — Next.js route handler
-- [`scripts/apply-neo4j-schema.ts`](scripts/apply-neo4j-schema.ts) — one-off schema migration
+- [`proxy.ts`](proxy.ts) — protects `/home` and redirects unauthenticated users to `/login`

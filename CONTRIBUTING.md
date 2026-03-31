@@ -3,9 +3,9 @@
 ## Local development
 
 ```bash
-npm ci
-npm run build
-npm test
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm test
 ```
 
 Tests spin up Neo4j via **Testcontainers** (Docker required), similar to GitHub Actions.
@@ -14,35 +14,51 @@ Tests spin up Neo4j via **Testcontainers** (Docker required), similar to GitHub 
 
 Workflows live under `.github/workflows/`:
 
-- **`ci.yml`** — on push and pull requests to `main`: `npm ci`, `npm run build`, `npm test` (Node 20, `ubuntu-latest`).
+- **`ci.yml`** — on push and pull requests to `main` and `dev`: `pnpm install --frozen-lockfile`, `pnpm run build`, `pnpm test` (Node 24, `ubuntu-latest`).
 
 ## Releases (maintainers)
 
-### npm secret
+### npm Trusted Publishing
 
-In the GitHub repository: **Settings → Secrets and variables → Actions**, add:
+This repository publishes with npm Trusted Publishing (GitHub OIDC), not with an `NPM_TOKEN`.
+Ensure npm package trusted publisher settings are configured for this repository/workflow.
 
-- **`NPM_TOKEN`**: npm [automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with permission to publish `neo4j-better-auth`.
+### Stable releases from `main`
 
-### Publishing a version
+Releases are managed with Changesets.
 
-1. Bump `version` in `package.json` (or run `npm version patch|minor|major`, which updates `package.json` and creates a git tag).
-2. The git tag must be exactly `v` + the semver in `package.json` (e.g. `v0.2.0` for version `0.2.0`).
-3. Push the commit and the tag:
+1. Add a changeset in your branch:
 
    ```bash
-   git push origin main
-   git push origin v0.2.0
+   pnpm changeset
    ```
 
-The **Publish** workflow (`publish.yml`, trigger: tag `v*`) runs tests, builds, runs `npm publish --access public`, and creates a **GitHub Release** with auto-generated notes.
+2. Merge into `main`.
+3. The **Release Main** workflow (`publish.yml`) opens/updates a versioning PR.
+4. Merge the versioning PR to publish to npm and create a GitHub Release.
 
-If the tag does not match `package.json`, the workflow fails before publishing.
+The workflow:
+
+- bumps `package.json` version from pending changesets
+- publishes to npm with `latest` tag and provenance
+- creates a GitHub release automatically
+
+### Prereleases from `dev`
+
+Pushes to `dev` trigger **Publish Dev** (`publish-dev.yml`):
+
+- generates a snapshot version (`*-dev.*`)
+- publishes to npm with `dev` dist-tag and provenance
+- creates a GitHub prerelease
+
+This is intended for testing integration builds before stable release on `main`.
 
 ### Manual publish from your machine
 
 From the repo root (not `npm publish <package-name>`):
 
 ```bash
-npm publish --access public
+pnpm release
 ```
+
+Local publishing is intended as break-glass only; prefer CI releases to preserve provenance and auditable trusted identity.

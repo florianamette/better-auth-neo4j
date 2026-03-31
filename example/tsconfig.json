@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "neo4j-better-auth": ["../src/index.ts"]
     }
   },
   "include": [

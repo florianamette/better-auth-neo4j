@@ -120,6 +120,30 @@ export function neo4jAdapter(
 				return row;
 			}
 
+			function filterReturnedFields(
+				defaultModelKey: string,
+				row: Record<string, unknown>,
+			): Record<string, unknown> {
+				const table = schema[defaultModelKey];
+				if (!table?.fields) return row;
+				const hiddenDbFields = new Set<string>();
+				for (const [fieldKey, attr] of Object.entries(table.fields) as [
+					string,
+					DBFieldAttribute,
+				][]) {
+					if (attr.returned !== false) continue;
+					hiddenDbFields.add(
+						getFieldName({
+							model: defaultModelKey,
+							field: fieldKey,
+						}),
+					);
+				}
+				return Object.fromEntries(
+					Object.entries(row).filter(([k]) => !hiddenDbFields.has(k)),
+				);
+			}
+
 			function createNodeQuery(
 				model: string,
 				props: Record<string, unknown>,
@@ -241,7 +265,10 @@ export function neo4jAdapter(
 				}
 				const dm = getDefaultModelName(model);
 				return pickSelect(
-					normalizeRow(dm, nodeToPlain(node as import("neo4j-driver").Node)),
+					filterReturnedFields(
+						dm,
+						normalizeRow(dm, nodeToPlain(node as import("neo4j-driver").Node)),
+					),
 					select,
 					dm,
 				);
@@ -314,7 +341,7 @@ export function neo4jAdapter(
 							},
 						);
 					}
-					return row as T;
+					return filterReturnedFields(dk, row) as T;
 				},
 
 				update: async <T>({
@@ -368,7 +395,7 @@ export function neo4jAdapter(
 							},
 						);
 					}
-					return row as T;
+					return filterReturnedFields(dk, row) as T;
 				},
 
 				updateMany: async ({
@@ -514,9 +541,12 @@ export function neo4jAdapter(
 						.filter(Boolean)
 						.map((node) =>
 							pickSelect(
-								normalizeRow(
+								filterReturnedFields(
 									dm,
-									nodeToPlain(node as import("neo4j-driver").Node),
+									normalizeRow(
+										dm,
+										nodeToPlain(node as import("neo4j-driver").Node),
+									),
 								),
 								select,
 								dm,

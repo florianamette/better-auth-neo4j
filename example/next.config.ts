@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
 			"neo4j-better-auth": "../",
 		},
 	},
+	allowedDevOrigins: ['neo4j-better-auth.local'],
 };
 
 export default nextConfig;

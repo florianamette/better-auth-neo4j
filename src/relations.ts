@@ -92,7 +92,7 @@ export async function updateReferenceEdges(
 		await run(
 			`
 MATCH (child:${cl} { ${childIdProp}: $childId })
-OPTIONAL MATCH (old)-[r:${relType}]->(child)
+OPTIONAL MATCH (old:${pl})-[r:${relType}]->(child)
 DELETE r
 `.trim(),
 			{ childId },
@@ -130,8 +130,7 @@ export function listCascadeChildTargets(
 			if (!attr.references) continue;
 			if (getDefaultModelName(attr.references.model) !== parentDefaultKey)
 				continue;
-			const onDel = attr.references.onDelete ?? "cascade";
-			if (onDel !== "cascade") continue;
+			if (attr.references.onDelete !== "cascade") continue;
 			out.push({
 				childLabel: getModelName(childDefaultKey),
 				fkProp: getFieldName({ model: childDefaultKey, field: fieldKey }),

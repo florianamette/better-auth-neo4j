@@ -1,8 +1,8 @@
 # neo4j-better-auth
 
-Better Auth database adapter for [Neo4j](https://neo4j.com/): one node label per model, properties aligned with the Better Auth schema, and relationship edges derived from `references` on fields (for example `User`–`HAS_SESSION`→`Session`).
+Better Auth database adapter for [Neo4j](https://neo4j.com/).
 
-Built with [`createAdapterFactory`](https://better-auth.com/docs/guides/create-a-db-adapter), [`neo4j-driver`](https://www.npmjs.com/package/neo4j-driver), and [@neo4j/cypher-builder](https://github.com/neo4j/cypher-builder).
+The adapter maps Better Auth models to Neo4j node labels, stores model fields as node properties, and creates `HAS_*` relationship edges from foreign-key references (for example `User-[:HAS_SESSION]->Session`).
 
 ## Install
 
@@ -10,9 +10,15 @@ Built with [`createAdapterFactory`](https://better-auth.com/docs/guides/create-a
 npm install neo4j-better-auth better-auth neo4j-driver @neo4j/cypher-builder
 ```
 
-Peer dependencies: `better-auth`, `neo4j-driver`, `@neo4j/cypher-builder` (see `package.json` for supported ranges).
+### Requirements
 
-## Usage
+- Node.js `>=20`
+- Peer dependencies:
+  - `better-auth` `^1.5.0`
+  - `neo4j-driver` `^5.0.0 || ^6.0.0`
+  - `@neo4j/cypher-builder` `^3.0.1`
+
+## Quick Start
 
 ```ts
 import neo4j from "neo4j-driver";
@@ -20,24 +26,47 @@ import { betterAuth } from "better-auth";
 import { neo4jAdapter } from "neo4j-better-auth";
 
 const driver = neo4j.driver(
-  process.env.NEO4J_URI!,
-  neo4j.auth.basic(process.env.NEO4J_USER!, process.env.NEO4J_PASSWORD!),
+	process.env.NEO4J_URI!,
+	neo4j.auth.basic(process.env.NEO4J_USER!, process.env.NEO4J_PASSWORD!),
 );
 
 export const auth = betterAuth({
-  database: neo4jAdapter({ driver, database: "neo4j" }),
+	database: neo4jAdapter({
+		driver,
+		database: process.env.NEO4J_DATABASE,
+	}),
+	emailAndPassword: {
+		enabled: true,
+	},
 });
 ```
 
-Apply uniqueness constraints / indexes generated for your schema (see `buildSchemaStatements` / `runCypherMigration` in the package exports) before going to production.
+## Production Schema Setup
 
-## Example (Next.js + Docker Neo4j)
+Before production, apply generated Neo4j constraints and indexes for your Better Auth schema.
 
-See the [`example/`](example/) app: Better Auth, `neo4jAdapter`, Docker Compose for Neo4j, and `npm run db:schema`.
+Use exported helpers:
+- `buildSchemaStatements(...)` to generate Cypher statements
+- `runCypherMigration(...)` to execute statements
+
+See the full guide and examples in [`docs/package.md`](docs/package.md).
+
+## Example App
+
+The [`example/`](example/) directory contains a Next.js app using:
+- `better-auth`
+- `neo4jAdapter(...)`
+- Docker Neo4j
+
+## Full Documentation
+
+For full configuration, API behavior, filtering semantics, migration strategy, troubleshooting, and CI/release notes, read:
+
+- [`docs/package.md`](docs/package.md)
 
 ## Contributing
 
-Development setup, tests, CI, and release process: **[CONTRIBUTING.md](https://github.com/florianamette/better-auth-neo4j/blob/main/CONTRIBUTING.md)** in the repository.
+Project development and release process are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 

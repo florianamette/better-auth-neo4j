@@ -17,5 +17,9 @@ export interface Neo4jBetterAuthConfig {
 	 */
 	session?: Session;
 	usePlural?: boolean;
+	/**
+	 * Better Auth adapter debug logs. Keep disabled in production unless you have
+	 * a short-lived debugging need and can safely handle sensitive values in logs.
+	 */
 	debugLogs?: DBAdapterDebugLogOption;
 }

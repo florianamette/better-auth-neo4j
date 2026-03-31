@@ -1,47 +1,46 @@
-name: Publish
+name: Release Main
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
+  id-token: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
-      - name: Use Node.js 20
-        uses: actions/setup-node@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
-          node-version: 20
-          cache: npm
+          version: 9
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
           registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm test
 
-      - name: Match tag to package.json version
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VER=$(node -p "require('./package.json').version")
-          if [ "$TAG" != "v$VER" ]; then
-            echo "::error::Tag $TAG must equal v$VER from package.json"
-            exit 1
-          fi
-
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-
-      - name: Publish to npm
-        run: npm publish --access public
-
-      - name: GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Version and publish with Changesets
+        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
-          generate_release_notes: true
+          version: pnpm version-packages
+          publish: pnpm release
+          commit: "chore: version packages"
+          title: "chore: version packages"
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
