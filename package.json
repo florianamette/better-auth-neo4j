@@ -1,6 +1,6 @@
 {
   "name": "neo4j-better-auth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Better Auth database adapter for Neo4j (nodes + relationship edges for foreign keys)",
   "type": "module",
   "main": "./dist/index.cjs",
